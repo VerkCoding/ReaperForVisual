@@ -190,6 +190,47 @@ Total: about 20 hours. The earlier 12.5–14.5 hour figure counted only the buil
   - The owner chose every recommendation on what was left: the repository `VerkCoding/ReaperForVisual`; two sentences in DESIGN.md reworded; the start action registered again under its new name on the owner's REAPER (the toolbar button is theirs to point at it); the owner's paths out of the tests and docs (`tests/local_paths.lua`, ignored by git). Not tried yet: update and uninstall through ReaPack (at 0.1.1).
   - README and the page's About panel rewritten for users (owner's rules: no icons, no em dashes): every mark the page shows, what is kept and where, how accurate it is (the measured numbers), the page's status words and what to do about each. Every statement checked against the page's and the engine's code.
 
+## After 0.1: what is left (2026-10-16)
+
+The next phase, named by the owner: bug fixing, quality of life, and upgrades of the logic and the page. Nothing below is decided yet: each item is planned like a step (research, Price/Payoff/Stability, the owner's choice) before it is built. The source of each item is in brackets.
+
+### Release 0.1, not finished
+
+- **R1** The repository answers 404 to a visitor who is not signed in to GitHub (the repository page, `README.md` and `index.xml` on `raw.githubusercontent.com`, checked 2026-10-16): it is private, or not public yet. ReaPack and users can only reach a public repository.
+- **R2** There is no tag `v0.1.0` and no `index.xml` on `main` (one commit, "Init"). The README's install link fails until steps 1 to 3 of "Releasing" in CONTRIBUTING are done.
+- **R3** Then, a check from outside: the install link answers, and a REAPER that has never seen the tool installs from GitHub as it did from the local index (step 11 as built).
+
+### Bugs and risks
+
+- **B1** A drum trigger reads up to 15 dB too loud while playing: the crest model was fitted on one song. Planned as step 12. [step 10b review R1]
+- **B2** While playing, a frame costs 1.9 ms at 224 tracks against a gate of 1 ms (0.51 ms at 48 tracks); accepted for 0.1. [step 10a]
+- **B3** While a dense project plays, a few sparse parts have no height yet: 3 to 7 track-sections of 148 on the second song. [step 10b review R2]
+- **B4** Half of the spectrum map was dropped once on the owner's song at the MCP tools' first change; not reproduced in three probes, now counted (`ym.resets` on the debug page). [step 9b acceptance]
+- **B5** REAPER's main thread stood still for 5.5 minutes once during a suite run, with no test engine running; the engine now records its longest gap and when it happened. [step 8 review, step 10a]
+- **B6** Tests that fail now and then and pass when run alone: `meter_live` (a burst read near -96 dB), `engine_readonly` (the state counter moved once when REAPER set media offline and online on a focus change), `axes_live` (one sparse part), and runs during a REAPER slowdown. [steps 8, 10a, 10b]
+- **B7** After the engine stops, the light of "Show all or chosen tracks" keeps its last state, the mode of the project that was active then. To decide whether it should go off. [step 11 clean install]
+
+### Quality of life
+
+- **Q1** Update and uninstall through ReaPack were never tried: they need a second version (0.1.1). [step 11 reviewed]
+- **Q2** "Open Preferences now?" opens Preferences on its General page; the user scrolls down to Control/OSC/web. The page names `ViewPrefs` takes are not documented (six names tried). [step 11 as built]
+- **Q3** The README has no screenshots. [owner's decision, step 11]
+- **Q4** Never tried: macOS, Linux, touch screens, and the page opened from another device on the network. [README, known limits]
+- **Q5** Contributors cannot run the `band` and `sotw` tests: their multitracks are licensed for education only and are not in the repository. A fixture made from freely licensed or generated audio would let them. [CONTRIBUTING]
+- **Q6** No check runs on GitHub: every test needs REAPER. Which tests could run with a plain Lua interpreter is not known yet.
+
+### Limits accepted for 0.1 (candidates for upgrades of the logic)
+
+- **L1** Height and width are read from each track's files before its FX: an EQ'd hi-hat or ride can be 2 to 3 octaves off, and a widener is not seen. A return's height comes from what its sends bring it. [steps 7, 8]
+- **L2** A virtual instrument or a live input has no height of its own; a live input is estimated through its pan and fader, without its FX. [steps 5, 7]
+- **L3** While stopped, a setting changed inside an FX, or an item moved, shows only once that part plays again; a take FX parameter change is never seen. [steps 7, 9a]
+- **L4** Correlated tracks (room mics) are summed as powers; a send taken before the FX leaves them out ("approx."); the "image gap" mark cannot tell a widener from correlated mics. [steps 5, 6]
+- **L5** The crest model reads pure tones about 1.5 dB low and white noise about 5 dB high. Step 12 takes the level of a track with no FX from its files, which removes this where it applies. [step 5, step 10b]
+
+### Upgrades of the logic and the page
+
+- The owner's ideas, to be collected first.
+
 ## Why this order
 
 - **0 → everything:** without the dev loop every test costs a manual copy.
