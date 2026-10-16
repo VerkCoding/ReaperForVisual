@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.rpp-bak
+*.rpp-undo
+.vscode/
+.idea/
+.markdown-collab/
+index-local.xml
+tests/local_paths.lua

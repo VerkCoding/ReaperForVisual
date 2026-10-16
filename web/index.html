@@ -1,0 +1,126 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 VerkCoding -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReaperForVisual</title>
+<style>
+  :root {
+    --bg: #f4f5f2; --panel: rgba(255, 255, 255, 0.92); --ink: #1b1d1a; --ink-2: #555b53; --rule: #c9cec4;
+    --floor: #e6e9e2; --accent: #2a78d6; --warn: #b26b00; --bad: #c0392b; --ok: #1f8a4c;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #131512; --panel: rgba(27, 30, 26, 0.92); --ink: #eef1ea; --ink-2: #a9b0a4; --rule: #3a4038;
+    --floor: #1d211c; --accent: #4f95ea; --warn: #e7a63c; --bad: #ef6f62; --ok: #3cbf76; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+               font-family: Arial, "Liberation Sans", Arimo, Helvetica, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #labels { position: fixed; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+  header { position: fixed; top: 0; left: 0; right: 0; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+           padding: 7px 12px; background: var(--panel); border-bottom: 1px solid var(--rule); }
+  h1 { font-size: 16px; margin: 0 4px 0 0; }
+  .grow { flex: 1; }
+  .muted { color: var(--ink-2); font-size: 12px; }
+  .state { font-weight: bold; font-size: 12px; padding: 1px 7px; border-radius: 4px; border: 1px solid currentColor; }
+  .running { color: var(--ok); } .paused, .waiting { color: var(--warn); } .stopped, .unreachable { color: var(--bad); }
+  button, a.btn { font: inherit; font-size: 13px; padding: 2px 9px; color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; text-decoration: none; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .group { display: inline-flex; gap: 4px; align-items: center; }
+  [hidden] { display: none !important; }
+  input[type=range] { width: 110px; vertical-align: middle; }
+  select { font: inherit; font-size: 13px; padding: 1px 4px; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; max-width: 260px; }
+  /* a section's name, times and share measured in full (step 9b review: cut at 260 px) */
+  #sect { max-width: min(400px, calc(100vw - 32px)); }
+  #floorn { margin-left: 4px; }
+  /* placed by stage.js with a transform, from the top left corner */
+  .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; padding: 1px 5px; border-radius: 3px;
+         background: var(--panel); border: 1px solid var(--rule); }
+  .lbl.ret { font-style: italic; color: var(--ink-2); }
+  .lbl.box { color: var(--ink-2); border-style: dashed; }
+  .lbl.ghost { color: var(--ink-2); border-style: dotted; }
+  .lbl.guide { background: none; border: none; color: var(--ink-2); font-size: 11px; }
+  .lbl.sel { border-color: var(--accent); }
+  .mk { font-size: 10px; color: var(--warn); margin-left: 4px; font-style: normal; }
+  aside { position: fixed; z-index: 3; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 11px; font-size: 13px; }
+  #detail { left: 12px; bottom: 12px; max-width: 360px; }
+  #detail .nm { font-weight: bold; margin-bottom: 4px; }
+  #detail dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+  #detail dt { color: var(--ink-2); } #detail dd { margin: 0; }
+  #detail .why { color: var(--warn); font-size: 12px; margin-top: 4px; }
+  /* --head: the header's height (stage.js), which wraps to more rows on a narrow screen */
+  #about { right: 12px; top: calc(var(--head, 44px) + 8px); max-width: min(440px, calc(100% - 24px));
+           max-height: calc(100% - var(--head, 44px) - 20px); overflow-y: auto; box-sizing: border-box; }
+  #about h2 { font-size: 14px; margin: 0 0 6px; }
+  #about p { margin: 6px 0; }
+  #about a { color: var(--accent); }
+  #note { left: 50%; top: calc(var(--head, 44px) + 8px); transform: translateX(-50%); color: var(--ink-2); text-align: center; max-width: min(560px, calc(100% - 24px)); width: max-content; }
+  #cmdline { right: 12px; bottom: 12px; color: var(--ink-2); }
+  /* the first thing a project never set up shows (step 11): what to do, in two buttons */
+  #start { left: 50%; top: 38%; transform: translate(-50%, -50%); max-width: min(460px, calc(100% - 24px)); padding: 16px 18px; text-align: center; }
+  #start h2 { font-size: 16px; margin: 0 0 8px; }
+  #start p { margin: 8px 0; color: var(--ink-2); }
+  #start .big { font-size: 15px; padding: 7px 14px; margin: 4px; border-color: var(--accent); }
+  #cmdline.ok { color: var(--ok); } #cmdline.bad { color: var(--bad); }
+  @media (max-width: 640px) { #detail { max-width: calc(100% - 24px); } input[type=range] { width: 70px; } }
+</style>
+</head>
+<body>
+<canvas id="stage" aria-label="The stage: each part where it is heard"></canvas>
+<div id="labels"></div>
+<header>
+  <h1>ReaperForVisual</h1>
+  <span id="state" class="state waiting">connecting to REAPER…</span>
+  <span id="project" class="muted"></span>
+  <span class="grow"></span>
+  <span class="group">
+    <button id="mode" title="Switch between the whole mix (one object per group, every return on its own) and the tracks you chose">All / chosen</button>
+    <button id="undo" disabled title="Back to the choices before the last change">Undo</button>
+    <button id="redo" disabled title="Make the undone change again">Redo</button>
+  </span>
+  <span class="group" id="sectgroup" hidden>
+    <select id="sect" title="The stage at the edit cursor (live while playing), or the average stage of a section of the song">
+      <option value="">At the cursor</option>
+    </select>
+    <select id="sectsrc" title="Where the sections come from (kept in the project's .rfv.json)">
+      <option value="regions">Sections: regions</option>
+      <option value="markers#">Sections: # markers</option>
+      <option value="markers">Sections: every marker</option>
+      <option value="off">Sections: none</option>
+    </select>
+  </span>
+  <span class="group">
+    <button id="v3d" aria-pressed="true" title="Seen from behind and above the listener">3D</button>
+    <button id="vtop" title="Seen from above: left to right and near to far">Top</button>
+    <button id="vfront" title="Seen from behind the listener: left to right and low to high">Front</button>
+  </span>
+  <label class="group muted" title="Parts this far under the loudest part are not drawn (noise floors, bleed, dither)">Hide under
+    <input id="floor" type="range" min="20" max="60" step="5" value="40"><span id="floorv">40 dB</span><span id="floorn"></span></label>
+  <a id="debug" class="btn" href="debug.html" title="Every track with its role, numbers, and the choices of what is shown">Tracks</a>
+  <button id="aboutbtn" aria-expanded="false">About</button>
+</header>
+<aside id="note" hidden></aside>
+<aside id="start" hidden>
+  <h2>What should the stage show?</h2>
+  <p>Nothing is chosen in this project yet. Choose once; it is kept for this project.</p>
+  <button id="startall" class="big">The whole mix</button>
+  <button id="startsel" class="big">The tracks selected in REAPER</button>
+  <p>You can change it any time with All / chosen at the top, or with the ReaperForVisual actions in REAPER.</p>
+</aside>
+<aside id="detail"></aside>
+<aside id="cmdline" hidden></aside>
+<aside id="about" hidden>
+  <h2>ReaperForVisual <span id="version"></span></h2>
+  <p>Where every part of your mix sits, as you hear it. Left or right is where the part is heard, measured from its meters after every pan, send and bus on its way. Low or high is its spectral centre, read from its audio files: 40 Hz at the floor, 12 kHz at the top (the post at the back right shows the scale). Near and big is loud compared with the whole mix (the rings mark 0, −10, −20 and −30 dB). Wide means its left and right have little in common. A cloud is a return, such as a reverb; a faint shell is a bus or group shown with its tracks inside. Hollow means muted, or cut by a solo, and drawn where it was last heard.</p>
+  <p>Stopped, the stage shows the edit cursor. Where the song has played, each part stands where its meter put it there, through the faders and pans as they are now. Elsewhere it is worked out from its files, with its effects as measured where it played. Play the song once, and the stage when stopped is as exact as while playing. What playing measured is kept for your next session in REAPER's resource folder (Data/ReaperForVisual).</p>
+  <p>The first list at the top shows a section of the song instead of the cursor: its average stage, and how much of it was measured while it played. Sections are your regions (one that covers the whole song, made for rendering, is left out), else markers whose name starts with #. The second list chooses where sections come from.</p>
+  <p>Height and width are read before each track's effects, so an EQ or a widener on a track is not seen. "?" marks a part whose sound does not come from audio files (a virtual instrument, a live input). Hover over a part for its numbers and the meaning of its marks. Nothing in your project is changed.</p>
+  <p>Copyright (C) 2026 VerkCoding. Licensed under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">GNU Affero General Public License v3.0 only</a>, with no warranty. The source code: <a href="https://github.com/VerkCoding/ReaperForVisual" target="_blank" rel="noopener">github.com/VerkCoding/ReaperForVisual</a>. The name ReaperForVisual and its logo are not licensed under the AGPL.</p>
+  <p>Includes three.js r170, MIT licence, Copyright © 2010-2024 three.js authors (<a href="vendor/three/LICENSE" target="_blank">licence</a>).</p>
+</aside>
+<script type="module" src="stage.js"></script>
+</body>
+</html>

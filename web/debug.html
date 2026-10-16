@@ -1,0 +1,510 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 VerkCoding -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReaperForVisual debug</title>
+<style>
+  :root {
+    --bg: #f4f5f2; --panel: #ffffff; --ink: #1b1d1a; --ink-2: #555b53; --rule: #d9ddd5;
+    --ok: #1f8a4c; --warn: #b26b00; --bad: #c0392b; --meter: #2a78d6; --meter-hot: #e34948; --accent: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #131512; --panel: #1b1e1a; --ink: #eef1ea; --ink-2: #a9b0a4; --rule: #2e332d;
+    --ok: #3cbf76; --warn: #e7a63c; --bad: #ef6f62; --meter: #4f95ea; --meter-hot: #ef6f62; --accent: #4f95ea; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font-family: Arial, "Liberation Sans", Arimo, Helvetica, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); }
+  header, main, footer { max-width: 1100px; margin: 0 auto; padding: 12px 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  h1 { font-size: 18px; margin: 0; }
+  h2 { font-size: 14px; margin: 16px 0 4px; }
+  .state { font-weight: bold; padding: 2px 8px; border-radius: 4px; border: 1px solid currentColor; }
+  .running { color: var(--ok); } .paused, .waiting { color: var(--warn); } .stopped, .unreachable { color: var(--bad); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+  .card b { display: block; font-size: 12px; color: var(--ink-2); font-weight: normal; margin-bottom: 2px; }
+  .err { color: var(--bad); white-space: pre-wrap; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; background: var(--panel); border: 1px solid var(--rule); }
+  th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { font-size: 12px; color: var(--ink-2); font-weight: normal; }
+  td.name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--rule); }
+  .bar { position: relative; width: 140px; height: 8px; background: var(--rule); border-radius: 2px; display: inline-block; vertical-align: middle; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--meter); border-radius: 2px; }
+  .bar i.hot { background: var(--meter-hot); }
+  .db { display: inline-block; width: 48px; text-align: right; font-size: 12px; color: var(--ink-2); }
+  .deg { display: inline-block; min-width: 52px; text-align: right; }
+  .tag { font-size: 10px; color: var(--warn); margin-left: 4px; }
+  .gtag { font-size: 10px; color: var(--ok); margin-left: 4px; }
+  button { font: inherit; padding: 2px 10px; }
+  select { font: inherit; font-size: 12px; max-width: 150px; }
+  .muted { color: var(--ink-2); font-size: 12px; }
+  .flag { display: inline-block; font-size: 11px; padding: 0 5px; margin-right: 3px; border-radius: 3px; border: 1px solid var(--rule); color: var(--ink-2); cursor: help; }
+  .flag.warn { color: var(--warn); border-color: currentColor; }
+  .flag.user { color: var(--ok); border-color: currentColor; }
+  td.why { max-width: 300px; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); font-size: 12px; }
+  tr.ignored td.name, tr.ignored td.role { color: var(--ink-2); }
+  .view { margin-top: 8px; }
+  .view .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .prompt { border: 1px dashed var(--warn); color: var(--warn); border-radius: 6px; padding: 8px 10px; margin: 6px 0; }
+  .line { margin: 4px 0; font-size: 13px; }
+  .line button { padding: 0 6px; font-size: 12px; margin-left: 4px; }
+  #cmdline.ok { color: var(--ok); } #cmdline.bad { color: var(--bad); }
+  @media (max-width: 900px) { td.why, th.why { display: none; } }
+  footer { color: var(--ink-2); font-size: 12px; }
+  @media (max-width: 640px) { .bar { width: 70px; } td.name { max-width: 120px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>ReaperForVisual</h1>
+  <span id="state" class="state waiting">connecting to REAPER…</span>
+  <span id="project"></span>
+  <button id="stop" title="Stop the engine (same as running the ReaperForVisual action again)">Stop engine</button>
+  <a id="tostage" href="index.html" title="The 3D stage">Stage</a>
+</header>
+<main>
+  <div class="grid">
+    <div class="card"><b>Transport</b><span id="transport">-</span></div>
+    <div class="card"><b>Frames (page side)</b><span id="rate">-</span></div>
+    <div class="card"><b>Engine cost per tick · gap between ticks (median/p95/max)</b><span id="cost">-</span></div>
+    <div class="card"><b>Since the engine started</b><span id="since">-</span></div>
+    <div class="card"><b>Choices (.rfv.json)</b><span id="view">-</span></div>
+    <div class="card"><b>Roles from routing</b><span id="roles">-</span></div>
+    <div class="card"><b>Meter decay (measured)</b><span id="decay">-</span></div>
+    <div class="card"><b>Spectra from the files (Y, width)</b><span id="spectra">-</span></div>
+  </div>
+  <div id="errors" class="err"></div>
+
+  <section class="card view">
+    <b>What is shown (the same as the "ReaperForVisual - ..." actions in REAPER)</b>
+    <div class="buttons">
+      <button data-cmd="take-show" title="Show exactly the tracks selected in REAPER (groups are kept)">Show selected in REAPER</button>
+      <button data-cmd="take-add" title="Add the tracks selected in REAPER">Add selected in REAPER</button>
+      <button data-cmd="take-group" title="Show the tracks selected in REAPER as one group (display only; the project is not changed)">Group selected in REAPER</button>
+      <button data-cmd="toggle" title="Switch between the whole mix (one object per group, every return on its own) and the chosen tracks">Show all / chosen</button>
+      <button data-cmd="clear" title="Show nothing (groups are kept)">Clear</button>
+      <button data-cmd="undo" id="undo" title="Back to the choices before the last change (kept while the engine runs)" disabled>Undo</button>
+      <button data-cmd="redo" id="redo" title="Make the undone change again" disabled>Redo</button>
+    </div>
+    <div id="prompt" class="prompt" hidden></div>
+    <div id="modeline" class="line muted" hidden></div>
+    <div id="groups"></div>
+    <div id="missing"></div>
+    <div id="cands"></div>
+    <div id="cmdline" class="muted"></div>
+  </section>
+
+  <p class="muted">Y (the spectral centroid) and Width are read from each track's files, before its FX: an EQ or a widener on a track is not seen, nor a reverb or delay on a return, whose Y comes from what its sends bring it. A virtual instrument or a live input has no files: "?".</p>
+  <h2>Stage: what will be drawn</h2>
+  <table>
+    <thead><tr><th>Object</th><th>Kind</th><th>Heard X</th><th>Heard Z</th><th title="spectral centroid of its files (step 7)">Y</th><th title="from the left/right correlation of its files after its pan: 0 % one point, 100 % as wide as two unrelated channels, above 100 % out of phase">Width</th></tr></thead>
+    <tbody id="stage"></tbody>
+  </table>
+
+  <h2>Tracks</h2>
+  <table>
+    <thead><tr><th title="shown on the stage">Show</th><th>Track</th><th>Role</th><th>Group</th><th>Flags</th><th>Main path</th><th>Own X</th><th>Own Z</th><th>Heard X</th><th>Heard Z</th><th title="spectral centroid of its files (step 7)">Y</th><th title="from the left/right correlation of its files after its pan: 0 % one point, 100 % as wide as two unrelated channels, above 100 % out of phase">Width</th><th class="why">Why</th></tr></thead>
+    <tbody id="tracks"></tbody>
+  </table>
+</main>
+<footer>
+  ReaperForVisual <span id="version">0.0.0-dev</span>, debug page (roadmap step 7). Copyright (C) 2026 VerkCoding.
+  Licensed under the GNU Affero General Public License v3.0 only, with no warranty; the source is the
+  ReaperForVisual folder this page is served from.
+</footer>
+<script>
+"use strict";
+// The engine writes JSON to REAPER's ExtState; the web interface returns
+// "EXTSTATE\t<section>\t<key>\t<value>" with backslash, tab and newline escaped.
+// ?section=... reads another engine (tests run theirs in "ReaperForVisual_test").
+const SECTION = new URLSearchParams(location.search).get("section") || "ReaperForVisual";
+const TIMEOUT_MS = 2000;
+const $ = (id) => document.getElementById(id);
+
+function unescapeValue(v) { return v.replace(/\\(\\|n|t)/g, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : "\\")); }
+
+async function getKey(key) {
+  const t0 = performance.now();
+  // A request REAPER does not answer must not freeze the status: give up after 2 s.
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  let r;
+  try { r = await fetch(`/_/GET/EXTSTATE/${SECTION}/${key}`, { cache: "no-store", signal: ctl.signal }); }
+  finally { clearTimeout(timer); }
+  const text = await r.text();
+  const ms = performance.now() - t0;
+  const line = text.replace(/\n$/, "");
+  const parts = line.split("\t");
+  const value = parts.length >= 4 ? unescapeValue(parts.slice(3).join("\t")) : "";
+  return { value: value ? JSON.parse(value) : null, ms, bytes: text.length };
+}
+
+// Z (dB, crest-corrected level) as a bar from -60 to +6 dB, and X (degrees, + is right).
+function bar(z) {
+  if (z === null || z === undefined) return `<span class="bar"></span><span class="db">-</span>`;
+  const w = Math.max(0, Math.min(1, (z + 60) / 66)) * 100;
+  return `<span class="bar"><i class="${z > 0 ? "hot" : ""}" style="width:${w.toFixed(1)}%"></i></span><span class="db">${z.toFixed(1)}</span>`;
+}
+function deg(x) {
+  if (x === null || x === undefined) return `<span class="deg">-</span>`;
+  return `<span class="deg">${x > 0 ? "R " : x < 0 ? "L " : ""}${Math.abs(x).toFixed(1)}°</span>`;
+}
+// Y [Hz, correlation, share of the power with no Y, share past FX we cannot hear, share read]
+// as a bar from 40 Hz to 12 kHz on a log scale, with what it rests on.
+function yfmt(v, role) {
+  if (!v) return `<span class="bar"></span><span class="db">-</span>`;
+  const [hz, , unknown, unseen, read] = v;
+  // "?" only once the files it rests on are read: before that nothing is known either way (step 8
+  // review; a bus or a return's share read is that of what its inputs bring)
+  const reading = read < 0.5;
+  let s;
+  if (hz === null) s = unknown >= 0.5 && !reading ? `<span class="bar"></span><span class="db" title="its sound does not come from files (a virtual instrument, a live input): no Y">?</span>`
+    : `<span class="bar"></span><span class="db">-</span>`;
+  else {
+    const w = Math.max(0, Math.min(1, Math.log(hz / 40) / Math.log(300))) * 100;
+    s = `<span class="bar"><i style="width:${w.toFixed(1)}%"></i></span><span class="db">${hz < 1000 ? hz.toFixed(0) : (hz / 1000).toFixed(1) + "k"}</span>`;
+  }
+  if (hz !== null && unknown >= 0.1 && !reading) s += `<span class="tag" title="${Math.round(100 * unknown)} % of its power has no Y (virtual instruments, live inputs)">${Math.round(100 * unknown)} % ?</span>`;
+  if (hz !== null && role === "return") s += `<span class="tag" title="estimated from what its sends bring it">≈ from sends</span>`;
+  if (reading) s += `<span class="tag" title="only ${Math.round(100 * read)} % of the files it rests on around the play position are read yet: the files are read within a fixed time each cycle, the tracks in turn, so with many tracks each one is read less densely and its Y is rougher for now">reading</span>`;
+  return s;
+}
+// Width from the left/right correlation c: (1 - c) as a per cent. 0 % one point (the same in both
+// channels), 100 % as wide as two unrelated channels, above 100 % out of phase.
+function wfmt(v) {
+  if (!v || v[1] === null) return `<span class="deg">-</span>`;
+  const c = v[1];
+  return `<span class="deg" title="width ${Math.round(100 * (1 - c))} %: left/right correlation ${c.toFixed(2)} (0 % one point, 100 % as wide as two unrelated channels, above 100 % out of phase)">${Math.round(100 * (1 - c))} %</span>` +
+    (c < 0 ? `<span class="tag" title="its left and right are out of phase: heard wider than the speakers, and they cancel in mono">anti-phase</span>` : "");
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function clock(s) { const m = Math.floor(s / 60); return `${m}:${(s - 60 * m).toFixed(3).padStart(6, "0")}`; }
+
+let graph = null, lastSeq = -1, lastSeqAt = 0, rates = [];
+
+// What each flag means; the amber ones are cases the routing alone cannot settle.
+const FLAGS = {
+  tie: ["warn", "main path guessed by track order: its loudest sends are at the same level (choose another under Main path)"],
+  // amber only for a bus fed at the same level as a main path (kind "parallel"): a parallel bus
+  // or a layer of that group, which the routing cannot tell apart; an ordinary return is grey
+  parallel: ["warn", "fed at the same level as another bus's main path: a parallel bus, or a layer of that group (set the Role to \"layer of ...\")"],
+  unexplained: ["warn", "its meter shows sound though its routing shows no source (a JS synth, a generator, an input that is not armed)"],
+  midi_no_instr: ["warn", "MIDI items but no online instrument (offline, bypassed, a JS synth, or none); the meter will tell"],
+  side_parent: ["warn", "its parent send lands on channels 3 and up: a sidechain, not heard"],
+  hw_only: ["", "hardware output only: not in the master mix"],
+  own_sound: ["", "a bus with items of its own"],
+  receives_sends: ["", "a source that also receives sends"],
+  live: ["", "live input (armed and monitoring): height (Y) unknown, there are no items to analyse"],
+  muted: ["", "muted"],
+  feedback: ["warn", "a routing loop on its main path"],
+  user: ["user", "set by you (Role or Main path); the routing's own answer is in Why"],
+};
+function trackName(g, i) {
+  if (i === -1) return "master";
+  const t = g.tracks[i];
+  return t ? (t.name || `Track ${t.i + 1}`) : "?";
+}
+const up = (s) => String(s || "").toUpperCase();
+
+// ---- commands to the engine -------------------------------------------------------------
+// ExtState "cmd" = "<seq>|<bytes>|<json>". The web interface cuts a request over ~1 KB without
+// a word (measured), so the engine checks the length and answers in the frame ("ack"); tracks
+// go by index with the graph version they were read from. One command at a time.
+const queue = [];
+let pending = null, lastSent = 0;
+function cmd(obj) { queue.push(obj); pump(); }
+async function pump() {
+  if (pending || !queue.length || !graph) return;
+  const c = Object.assign({ tab: graph.tab }, queue.shift());
+  const tries = c._tries || 0;
+  delete c._tries;
+  if (c.k) c.gseq = graph.gseq;
+  const body = JSON.stringify(c);
+  const seq = Math.max(Date.now(), lastSent + 1);
+  lastSent = seq;
+  const value = `${seq}|${new TextEncoder().encode(body).length}|${body}`;
+  pending = { seq, c, at: performance.now(), tries };
+  showCmd(`sending: ${c.op}…`, "");
+  try { await fetch(`/_/SET/EXTSTATE/${SECTION}/cmd/${encodeURIComponent(value)}`, { cache: "no-store" }); }
+  catch (e) { pending = null; showCmd(`could not reach REAPER: ${e}`, "bad"); }
+}
+function showCmd(text, cls) { const el = $("cmdline"); el.textContent = text; el.className = cls ? cls : "muted"; }
+function ackFrom(f) {
+  if (!pending) return;
+  if (f.ack >= pending.seq) {
+    const p = pending;
+    pending = null;
+    if (!f.ack_ok && /sent again/.test(f.ack_msg || "") && p.tries < 2) {
+      // the tracks changed under the command: read the graph again, then resend once
+      graph = null;
+      const again = Object.assign({}, p.c, { _tries: p.tries + 1 });
+      delete again.tab; delete again.gseq;
+      queue.unshift(again);
+    } else {
+      showCmd(f.ack_msg || "", f.ack_ok ? "ok" : "bad");
+    }
+    pump();
+  } else if (performance.now() - pending.at > 3000) {
+    showCmd(`no answer from the engine for "${pending.c.op}" (is it running?)`, "bad");
+    pending = null;
+    pump();
+  }
+}
+
+// ---- the graph: view, stage and tracks ---------------------------------------------------
+function chosenSet(g) { return new Set(((g.view && g.view.tracks) || []).map(up)); }
+function depthOf(objs, o) { let d = 0, x = o; while (x.parent !== null && x.parent !== undefined && d < 32) { x = objs[x.parent]; d++; } return d; }
+
+function renderGraph() {
+  const g = graph;
+  $("project").textContent = g ? `${g.name}  ·  tab ${g.tab.replace(/^userdata: 0*/, "")}  ·  ${g.tracks.length} tracks` : "";
+  $("version").textContent = g ? g.version : "";
+  const v = g && g.view;
+  const objs = (g && g.stage && g.stage.objects) || [];
+  const mode = (g && g.stage && g.stage.mode) || "chosen";
+  $("view").textContent = !g ? "-" : v ? `mode ${v.mode}, ${v.tracks.length} chosen, ${(v.groups || []).length} group(s)` : "none yet (nothing chosen)";
+  const miss = (g && g.store && g.store.missing) || [];
+  // an empty stage: nothing chosen, or every chosen track is gone from the project
+  const gone = v && v.tracks.length > 0 && miss.length > 0;
+  $("prompt").hidden = !g || mode !== "chosen" || objs.length > 0;
+  $("prompt").textContent = gone
+    ? (v.tracks.length === 1 ? `The chosen track is not in this project now (deleted? an undo in REAPER brings it back). `
+                             : `None of the ${v.tracks.length} chosen tracks is in this project now (deleted? an undo in REAPER brings them back). `) +
+      `Choose others: select tracks in REAPER and press "Show selected in REAPER", or tick tracks in the table below; "Forget" drops the deleted ones.`
+    : `Nothing is chosen yet. Select tracks in REAPER and press "Show selected in REAPER" (or run the action "ReaperForVisual - Show selected tracks"), or tick tracks in the table below.`;
+  $("modeline").hidden = !g || mode !== "all";
+  $("modeline").textContent = `Showing the whole mix: one object per group under the mix bus, every return on its own. ` +
+    `Your chosen tracks are kept; press "Show all / chosen" to go back to them and to pick tracks in the table.`;
+  const hist = (g && g.history) || { undo: 0, redo: 0 };
+  $("undo").disabled = !hist.undo; $("redo").disabled = !hist.redo;
+  $("undo").title = hist.undo ? `Back to the choices before the last change (${hist.undo} step${hist.undo === 1 ? "" : "s"} kept while the engine runs)` : "Nothing to undo (changes are kept while the engine runs)";
+  const ro = g && g.roles;
+  $("roles").textContent = !ro ? "-" :
+    `mix bus ${ro.mixbuses.length ? ro.mixbuses.map((i) => trackName(g, i)).join(", ") : "none (the master)"} · counted on ${ro.feeders} ${ro.basis || "feeding tracks"} · ` +
+    `classified ${ro.classified}× (${ro.classify_ms.toFixed(2)} ms, routing read in ${ro.snapshot_ms.toFixed(2)} ms)` +
+    (ro.heard ? ` · ${ro.heard} heard by the meter safety net` : "");
+
+  // groups, deleted tracks, choices found beside the project
+  const groups = (v && v.groups) || [];
+  $("groups").innerHTML = groups.map((gr, i) =>
+    `<div class="line">Group <b>${esc(gr.name)}</b> <span class="muted">(${gr.tracks.length} track${gr.tracks.length === 1 ? "" : "s"})</span>` +
+    `<button data-cmd="rename" data-i="${i}" title="Rename this group">Rename</button><button data-cmd="ungroup" data-i="${i}" title="Remove the group; its tracks stay shown">Ungroup</button></div>`).join("");
+  $("missing").innerHTML = miss.length ? `<div class="line">${miss.length} chosen track${miss.length === 1 ? " is" : "s are"} not in the project (deleted? an undo brings ${miss.length === 1 ? "it" : "them"} back): ` +
+    esc(miss.map((m) => m.label || m.guid).join(", ")) + `<button data-cmd="forget" title="Drop every mention of these tracks from the choices">Forget</button></div>` : "";
+  const cands = (g && g.store && g.store.candidates) || [];
+  $("cands").innerHTML = cands.map((c, i) => `<div class="line">Choices beside this project that fit it: ${esc(c.path.replace(/^.*[\\/]/, ""))} ` +
+    `<span class="muted">(${c.tracks} tracks, written for ${esc(c.project || "?")})</span><button data-cmd="adopt" data-i="${i}" title="Use these choices for this project">Use them</button></div>`).join("");
+
+  // the stage
+  $("stage").innerHTML = objs.length ? objs.map((o, j) => {
+    const sum = o.sum || null;
+    const name = o.kind === "group" ? `${esc(o.name)} <span class="muted">(group of ${o.members.length})</span>` : esc(trackName(g, o.track));
+    let kind = o.kind + (o.kind === "bus" ? (o.open ? ", open" : sum ? `, closed: its ${sum.length} track${sum.length === 1 ? "" : "s"} without the returns` : ", closed: measured at its output") : "");
+    if (o.kind === "group" && sum && sum.length < o.members.length) kind += `: adds up ${sum.length} (the others are inside them)`;
+    return `<tr><td class="name" style="padding-left:${8 + 16 * depthOf(objs, o)}px">${name}</td><td class="muted">${esc(kind)}</td><td id="sx${j}"></td><td id="sz${j}"></td><td id="sy${j}"></td><td id="sw${j}"></td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="muted">${mode === "chosen" ? "nothing chosen" : "nothing heard"}</td></tr>`;
+
+  // tracks
+  const chosen = g ? chosenSet(g) : new Set();
+  const roles = (v && v.roles) || {}, paths = (v && v.paths) || {};
+  const inGroup = {};
+  groups.forEach((gr) => gr.tracks.forEach((x) => { if (!(up(x) in inGroup)) inGroup[up(x)] = gr.name; }));
+  const buses = g ? g.tracks.filter((t) => t.role === "bus" || t.role === "mixbus" || t.role === "passthrough") : [];
+  const rows = (g ? g.tracks : []).map((t, i) => {
+    const gu = up(t.guid);
+    // "auto" names what the routing says, also while the user's choice is in force (t.was)
+    const routing = t.was ? (t.was === "mixbus" ? "mix bus" : t.was) :
+      !t.role ? "-" : t.role === "mixbus" ? "mix bus" : t.kind && t.kind !== t.role ? `${t.role} · ${t.kind}` : t.role;
+    const cur = roles[gu] || "";
+    const opts = [["", `auto (${routing})`], ["source", "source"], ["bus", "bus"], ["return", "return"], ["ignore", "ignore"]]
+      .concat(buses.filter((b) => b.i !== i).map((b) => [`layer:${up(b.guid)}`, `layer of ${b.name || "Track " + (b.i + 1)}`]));
+    const roleSel = `<select data-act="role" data-i="${i}" title="${cur ? "set by you" : "as the routing says"}">` +
+      opts.map(([val, label]) => `<option value="${esc(val)}"${val === cur ? " selected" : ""}>${esc(label)}</option>`).join("") + `</select>`;
+    const grp = t.group === null || t.group === undefined ? "" :
+      (t.group === t.i ? "itself" : esc(trackName(g, t.group))) +
+      (t.level ? ` <span class="muted" title="${t.level} bus${t.level > 1 ? "es" : ""} between this track and its group (pass-throughs not counted)">· level ${t.level}</span>` : "");
+    const flags = (t.flags || []).map((f) => {
+      let d = FLAGS[f] || ["", f];
+      if (f === "parallel" && t.kind !== "parallel") d = ["", "a return: reverb, delay or parallel processing, drawn as a cloud"];
+      return `<span class="flag ${d[0]}" title="${esc(d[1])}">${esc(f)}</span>`;
+    }).join("");
+    let path = "";
+    const sends = t.sends || [];
+    if ((t.via === "send" || (t.flags || []).includes("tie")) && sends.length) {
+      const pc = paths[gu] || "";
+      path = `<select data-act="path" data-i="${i}" title="where its own signal goes on its way to the master">` +
+        `<option value="">${pc ? "auto (as the routing decides)" : `auto (${esc(t.dry === null || t.dry === undefined ? "nowhere" : trackName(g, t.dry))})`}</option>` +
+        sends.map((d) => `<option value="${esc(up(g.tracks[d].guid))}"${up(g.tracks[d].guid) === pc ? " selected" : ""}>${esc(trackName(g, d))}</option>`).join("") + `</select>`;
+    }
+    // in "all" mode the boxes show the chosen tracks kept for later, and cannot be ticked
+    const show = `<input type="checkbox" data-act="show" data-i="${i}"${chosen.has(gu) ? " checked" : ""}` +
+      (mode === "all" ? ` disabled title="the whole mix is shown; press &quot;Show all / chosen&quot; to pick tracks"` : ` title="show this track on the stage"`) + `>` +
+      (inGroup[gu] ? `<span class="gtag" title="in the display group ${esc(inGroup[gu])}">${esc(inGroup[gu])}</span>` : "");
+    return `<tr class="${t.role || ""}"><td>${show}</td><td class="name" style="padding-left:${8 + 14 * t.depth}px"><span class="sw" style="${t.color ? `background:${t.color}` : ""}"></span>` +
+      `${t.folder ? "&#9662; " : ""}${esc(t.name || `Track ${t.i + 1}`)}</td><td class="role">${roleSel}</td><td>${grp}</td><td>${flags}</td><td>${path}</td>` +
+      `<td id="ox${i}"></td><td id="oz${i}"></td><td id="hx${i}"></td><td id="hz${i}"></td><td id="yy${i}"></td><td id="yw${i}"></td><td class="why" title="${esc(t.reason || "")}">${esc(t.reason || "")}</td></tr>`;
+  });
+  rows.unshift(`<tr><td></td><td class="name"><b>Master</b></td><td></td><td></td><td></td><td></td><td id="oxm"></td><td id="ozm"></td><td></td><td></td><td></td><td></td><td class="why"></td></tr>`);
+  $("tracks").innerHTML = rows.join("");
+  const se = g && g.store && g.store.error;
+  $("errors").dataset.store = se ? `Choices file: ${se.code}: ${se.msg}` : "";
+}
+
+let lastNote = null;
+function renderFrame(f, req) {
+  const now = performance.now();
+  if (f.seq !== lastSeq) {
+    if (lastSeqAt) rates.push(1000 / (now - lastSeqAt));
+    if (rates.length > 30) rates.shift();
+    lastSeq = f.seq; lastSeqAt = now;
+  }
+  const stale = now - lastSeqAt > 1500;
+  const st = f.state === "stopped" ? "stopped" : stale ? "paused" : "running";
+  $("state").className = `state ${st}`;
+  $("state").textContent = st === "paused" ? "paused (REAPER busy?)" : st;
+  $("stop").disabled = st !== "running";
+  $("transport").textContent = `${f.play & 1 ? "playing" : f.play & 2 ? "paused" : "stopped"} at ${clock(f.pos)}` +
+    (f.sm ? " · own and heard from the files at the cursor, with the FX gains learned while playing (model)" : "") +
+    (f.solo ? " · solo: only what is soloed is heard" : "");
+  const mean = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+  $("rate").textContent = `${mean.toFixed(1)}/s · request ${req.ms.toFixed(0)} ms · ${(req.bytes / 1024).toFixed(1)} KB · seq ${f.seq}`;
+  const c = f.cost || {};
+  $("cost").textContent = c.ms_med === undefined ? "-" : `${c.ms_med.toFixed(3)} ms median, ${c.ms_p95.toFixed(3)} p95, ${c.ms_max.toFixed(2)} max · ${c.ticks_per_s.toFixed(0)} ticks/s` +
+    (c.gap_ms_p95 === undefined ? "" : ` · gap ${c.gap_ms_med.toFixed(0)}/${c.gap_ms_p95.toFixed(0)}/${c.gap_ms_max.toFixed(0)} ms`) +
+    (c.frame_ms_med === undefined ? "" : ` · the frame alone ${c.frame_ms_med.toFixed(2)} ms median, ${c.frame_ms_p95.toFixed(2)} p95`);
+  // step 10a review: what to look at when REAPER felt slow (when, as seconds since the start)
+  const at = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  $("since").textContent = c.max_ms === undefined ? "-" :
+    `longest tick ${c.max_ms.toFixed(1)} ms at ${at(c.max_at)} (${c.max_kind || "meters, map"}) · ` +
+    `REAPER held the engine over 0.25 s ${c.long_gaps} time${c.long_gaps === 1 ? "" : "s"}${c.long_gaps ? `, longest ${c.gap_max_ms} ms at ${at(c.gap_max_at)}` : ""} · ` +
+    `Lua memory ${(c.mem_kb / 1024).toFixed(1)} MB` +
+    (c.stopped ? ` · stopped frames reusing the stage ${Math.round(100 * c.reused / c.stopped)} %` : "");
+  const errs = [];
+  if (f.state === "stopped") errs.push(`Engine stopped: ${f.reason}`);
+  if (f.err) errs.push(`Last engine error: ${f.err}`);
+  if ($("errors").dataset.store) errs.push($("errors").dataset.store);
+  $("errors").textContent = errs.join("\n");
+  const md = f.md;
+  $("decay").textContent = !md ? "-" : `${md.step.toFixed(3)} dB per refresh of ${md.refresh_ms.toFixed(1)} ms = ${md.decay.toFixed(1)} dB/s` +
+    ` (REAPER's setting ${md.vudecay}${md.measured ? "" : "; not measured yet"}; measured while playing)`;
+  const ym = f.ym;
+  $("spectra").textContent = !ym ? "-" : `${ym.tracks} track${ym.tracks === 1 ? "" : "s"} · around the play position ${Math.round(100 * ym.now)} % read · ` +
+    `whole song ${Math.round(100 * ym.song)} %` + (ym.coarse !== undefined ? ` (coarsely ${Math.round(100 * ym.coarse)} %)` : "") +
+    ` · ${ym.wps} windows/s · ${ym.ms.toFixed(2)} ms last cycle` + (ym.learned !== undefined ? ` · ${ym.learned} blocks of FX gains learned` : "") +
+    (ym.load_ms ? ` · learning read in ${ym.load_ms.toFixed(1)} ms` : "") + (ym.save_ms ? `, written in ${ym.save_ms.toFixed(1)} ms of work (${ym.save_kb} KB)` : "") +
+    (ym.save_err ? ` · WRITING THE LEARNING FAILED: ${ym.save_err}` : "") + (ym.resets ? ` · ${ym.resets} tracks read again (last: ${ym.reset_last || "?"})` : "");
+  // a REAPER action changed the view
+  if (lastNote === null) lastNote = f.note_n;
+  else if (f.note_n !== lastNote) { lastNote = f.note_n; showCmd(`from REAPER: ${f.note || ""}`, "ok"); }
+  ackFrom(f);
+  if (graph && f.a && f.a.length === graph.tracks.length) {
+    const est = new Set(f.ae || []), viaBus = new Set(f.hb || []), gap = new Set(f.hi || []);
+    const silenced = new Set(f.hm || []), approx = new Set(f.ha || []);
+    f.a.forEach((v, i) => {
+      const ox = $(`ox${i}`);
+      if (!ox) return;
+      const h = f.h ? f.h[i] : null;
+      ox.innerHTML = deg(v && v[0]) + (est.has(i) ? `<span class="tag" title="an armed track meters its input: estimated through its own pan and fader, FX ignored">est.</span>` : "") +
+        (gap.has(i) ? `<span class="tag" title="this bus's image is not its tracks' sum: FX that move or widen it, or correlated tracks such as room mics">image gap</span>` : "");
+      $(`oz${i}`).innerHTML = bar(v && v[1]);
+      $(`hx${i}`).innerHTML = deg(h && h[0]) + (viaBus.has(i) ? `<span class="tag" title="the only input of its bus: heard where the bus is">via bus</span>` : "") +
+        (silenced.has(i) ? `<span class="tag" title="it sounds, but a mute on its way or a solo elsewhere keeps it from the master">silenced</span>` : "") +
+        (approx.has(i) ? `<span class="tag" title="its way to the master takes a send before the FX: the FX are not counted">approx.</span>` : "");
+      $(`hz${i}`).innerHTML = bar(h && h[1]);
+    });
+    $("oxm").innerHTML = deg(f.ma && f.ma[0]); $("ozm").innerHTML = bar(f.ma && f.ma[1]);
+    if (f.y) f.y.forEach((v, i) => {
+      const yy = $(`yy${i}`);
+      if (!yy) return;
+      yy.innerHTML = yfmt(v, graph.tracks[i] && graph.tracks[i].role); $(`yw${i}`).innerHTML = wfmt(v);
+    });
+    (f.o || []).forEach((v, j) => {
+      const sx = $(`sx${j}`);
+      if (!sx) return;
+      sx.innerHTML = deg(v && v[0]); $(`sz${j}`).innerHTML = bar(v && v[1]);
+      const ob = graph.stage && graph.stage.objects[j];
+      const yv = f.oy && f.oy[j];
+      $(`sy${j}`).innerHTML = yfmt(yv, ob && ob.kind); $(`sw${j}`).innerHTML = wfmt(yv);
+    });
+  }
+}
+
+// ---- what the user does on the page ------------------------------------------------------
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-cmd]");
+  if (!b || !graph) return;
+  const what = b.dataset.cmd, i = Number(b.dataset.i);
+  if (what === "take-show") cmd({ op: "take", how: "show" });
+  else if (what === "take-add") cmd({ op: "take", how: "add" });
+  else if (what === "take-group") cmd({ op: "take", how: "group" });
+  else if (what === "toggle") cmd({ op: "mode", m: "toggle" });
+  else if (what === "clear") cmd({ op: "show", k: [] });
+  else if (what === "undo" || what === "redo") cmd({ op: what });
+  else if (what === "ungroup") cmd({ op: "ungroup", i });
+  else if (what === "rename") {
+    const gr = graph.view.groups[i];
+    const name = prompt("New name for the group", gr ? gr.name : "");
+    if (name && name.trim()) cmd({ op: "rename", i, name: name.trim() });
+  } else if (what === "forget") {
+    const miss = graph.store.missing.map((m) => m.guid);
+    for (let j = 0; j < miss.length; j += 12) cmd({ op: "forget", g: miss.slice(j, j + 12) }); // GUIDs: ~50 bytes each on the wire
+  } else if (what === "adopt") cmd({ op: "adopt", path: graph.store.candidates[i].path });
+});
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (!el.dataset || !el.dataset.act || !graph) return;
+  const i = Number(el.dataset.i), t = graph.tracks[i];
+  if (!t) return;
+  if (el.dataset.act === "show") cmd({ op: el.checked ? "add" : "remove", k: [i] });
+  else if (el.dataset.act === "role") cmd({ op: "role", g: up(t.guid), r: el.value || null });
+  else if (el.dataset.act === "path") cmd({ op: "path", g: up(t.guid), d: el.value || null });
+});
+
+// Poll ten times a second while the engine runs and the page is visible; once a second when
+// the engine is stopped or not started; not at all while the tab is hidden.
+let idle = false;
+async function poll() {
+  const started = performance.now();
+  if (!document.hidden) {
+    try {
+      const req = await getKey("frame");
+      const f = req.value;
+      if (!f) {
+        idle = true;
+        $("state").className = "state waiting"; $("state").textContent = "not started: run \"ReaperForVisual - Start or stop\" in REAPER";
+      } else {
+        // a new engine counts frames from 0 again: its graph is read even if its version number
+        // happens to be the old one's (a test engine starts its count afresh)
+        if (f.seq < lastSeq) graph = null;
+        if (!graph || graph.gseq !== f.gseq) { const g = await getKey("graph"); graph = g.value; renderGraph(); }
+        renderFrame(f, req);
+        idle = f.state === "stopped";
+        pump();
+      }
+    } catch (e) {
+      idle = true;
+      $("state").className = "state unreachable"; $("state").textContent = "REAPER's web interface is not answering";
+    }
+  }
+  const period = document.hidden || idle ? 1000 : 100;
+  setTimeout(poll, Math.max(0, period - (performance.now() - started)));
+}
+
+// Tell the engine a page is open, so starting it again does not open another browser tab.
+function heartbeat() {
+  fetch(`/_/SET/EXTSTATE/${SECTION}/page_seen/${Date.now()}`, { cache: "no-store" }).catch(() => {});
+}
+setInterval(heartbeat, 2000);
+heartbeat();
+
+$("tostage").href = `index.html${location.search}`;
+$("stop").addEventListener("click", () => fetch(`/_/SET/EXTSTATE/${SECTION}/command/stop`, { cache: "no-store" }));
+poll();
+</script>
+</body>
+</html>
