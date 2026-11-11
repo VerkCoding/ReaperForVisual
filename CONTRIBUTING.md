@@ -48,6 +48,24 @@ Each test opens a temporary project tab, closes it without saving and selects yo
 
 Live tests never touch your own projects. A test that can raise one of REAPER's dialogs (a plugin's licence prompt, for example) would hold every script: fixtures use REAPER's own plugins only.
 
+### Rules the live tests taught us
+
+Each of these cost a failed run or a stuck REAPER once. They apply to the tests and to any probe you write beside them.
+
+- **One command at a time.** The bridge is a single file queue. Do not send another bridge command, and do not let another tool drive the same REAPER, while a test or the suite runs. The runner prints a test's output only when the test ends, so a quiet terminal is not a stuck test.
+- **Other tools change the active tab.** Anything else that drives the same REAPER (a second terminal, an assistant session, a benchmark) can open or select a tab between two of your steps, and REAPER's actions and most scripts act on the active tab. Check that the active project is your test tab before every write, and select your own tab again at the end: closing a tab activates its neighbour, not the tab you came from.
+- **Your own running engine follows the test tabs too.** The engine you started for your work follows the active tab, so between two steps of a test it can act in the test's tab (it once moved a first save's choices into the sidecar before the test looked). Test engines use the ExtState section `ReaperForVisual_test` and their own temporary launchers; never stop, reset or send commands to the section `ReaperForVisual`.
+- **A deferred loop needs an end it cannot miss.** Deferred code started by a bridge command lives in the bridge's script. An error in it stops the bridge behind an error dialog, and a sampler that missed its end kept running, fed the next test and stopped its playback. The harness wraps deferred code and drops callbacks left over from an earlier test; give a probe of your own a time limit as well as its condition. If the bridge stops answering, close the dialog and run `claude_bridge.lua` again from the action list.
+- **A tab needs a file before it closes.** Closing a tab with unsaved changes raises REAPER's save prompt, and the prompt holds every script. The harness closes its tabs clean. A probe that opens a tab should open an empty project file in it first (`Main_openProject("noprompt:" .. path)`), save in place before closing, and check `IsProjectDirty` is 0. Saving a copy does not clear the flag.
+- **Silence the output with the master's mute, not its fader.** What is heard is worked out through the master's fader, so a fader pulled down changes the result. The master's meter reads before its mute, so the stage and the gates work the same with the master muted.
+- **Tests that arm a track monitor an input.** `live_input` and `engine_roles` arm tracks and turn monitoring on. With a microphone on that input and loudspeakers in the room, that is a feedback loop: mute the master in such a test, and know where your REAPER's output goes before running one.
+- **Do not judge noise or a sine against the meters.** The crest correction was fitted on a band: white noise reads about 6 dB high and a sine about 1.5 dB low. Use the fixtures' music for anything compared with the meters.
+- **Count the silence.** A level worked out from windows of a file must divide by every window read, the silent ones too, or a sparse part comes out too loud.
+- **Key media by type and file, not by pointer or length.** A source pointer changes when the project is opened again, and a source that REAPER has set offline reports length 0; both made the engine forget what it had learned.
+- **Close what you open on Windows.** A Lua file handle left open in the bridge's state blocks deleting or renaming that file. Close it, and call `collectgarbage()` if it was lost.
+- **A test that fails only in a full run may not be wrong.** When REAPER slows down for a moment a timing test can miss its gate; `meter_live` has done so and passed alone. Run it alone twice before changing code.
+- **Warn before a probe that can raise one of REAPER's own dialogs** (launching a script that is already running raises "ReaScript task control"). Someone has to be at the REAPER window to answer it, and "Remember my answer" must stay unticked.
+
 ## Releasing
 
 1. Set the version in `engine/rfv_core.lua` (`RFV.VERSION`), commit, tag it (`git tag v0.1.0`) and push the branch and the tag to GitHub.
